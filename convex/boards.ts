@@ -14,8 +14,11 @@ export const get = query({
     if (!identity) {
       throw new Error("Unauthorized");
     }
- 
+
+    let boards = [];
+
     if (args.favorites) {
+      // Fetch favorite boards
       const favoritedBoards = await ctx.db
         .query("userFavorites")
         .withIndex("by_user_org", (q) =>
@@ -25,8 +28,7 @@ export const get = query({
         .collect();
 
       const ids = favoritedBoards.map((b) => b.boardId);
-
-      const boards = await getAllOrThrow(ctx.db, ids);
+      boards = await getAllOrThrow(ctx.db, ids);
 
       return boards.map((board) => ({
         ...board,
@@ -34,15 +36,14 @@ export const get = query({
       }));
     }
 
-    const title = args.search as string;
-    let boards = [];
-
-    if (title) {
+    if (args.search) {
+      // Search for boards by title
       boards = await ctx.db
         .query("boards")
-        .withSearchIndex("search_title", (q) => q.search("title", title))
+        .withSearchIndex("search_title", (q) => q.search("title", args.search!))
         .collect();
     } else {
+      // Fetch all boards for the organization
       boards = await ctx.db
         .query("boards")
         .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
@@ -50,20 +51,18 @@ export const get = query({
         .collect();
     }
 
-    const boardsWithFavoriteRelation = boards.map((board) => {
-      return ctx.db
+    // Fetch favorite status for each board
+    const boardsWithFavoriteRelation = boards.map(async (board) => {
+      const favorite = await ctx.db
         .query("userFavorites")
         .withIndex("by_user_board", (q) =>
           q.eq("userId", identity.subject).eq("boardId", board._id)
         )
-        .unique()
-        .then((favorite) => {
-          return { ...board, isFavorite: !!favorite };
-        });
+        .unique();
+
+      return { ...board, isFavorite: !!favorite };
     });
 
-    const boardsWithFavoriteBoolean = Promise.all(boardsWithFavoriteRelation);
-
-    return boardsWithFavoriteBoolean;
+    return Promise.all(boardsWithFavoriteRelation);
   },
 });
