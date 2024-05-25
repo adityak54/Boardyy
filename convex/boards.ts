@@ -30,13 +30,12 @@ export const get = query({
       const ids = favoritedBoards.map((b) => b.boardId);
       boards = await getAllOrThrow(ctx.db, ids);
 
-      return boards.map((board) => ({
+      // Map the favorite status to each board
+      boards = boards.map((board) => ({
         ...board,
         isFavorite: true,
       }));
-    }
-
-    if (args.search) {
+    } else if (args.search) {
       // Search for boards by title
       boards = await ctx.db
         .query("boards")
@@ -47,22 +46,24 @@ export const get = query({
       boards = await ctx.db
         .query("boards")
         .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
-        .order("desc")
+        .order("asc")
         .collect();
     }
 
-    // Fetch favorite status for each board
-    const boardsWithFavoriteRelation = boards.map(async (board) => {
-      const favorite = await ctx.db
-        .query("userFavorites")
-        .withIndex("by_user_board", (q) =>
-          q.eq("userId", identity.subject).eq("boardId", board._id)
-        )
-        .unique();
+    // Fetch all favorite relations for the current user
+    const favoriteRelations = await ctx.db
+      .query("userFavorites")
+      .withIndex("by_user_org", (q) =>
+        q.eq("userId", identity.subject).eq("orgId", args.orgId)
+      )
+      .collect();
 
-      return { ...board, isFavorite: !!favorite };
-    });
+    // Map the favorite status to each board
+    boards = boards.map((board) => ({
+      ...board,
+      isFavorite: !!favoriteRelations.find((fav) => fav.boardId === board._id),
+    }));
 
-    return Promise.all(boardsWithFavoriteRelation);
+    return boards;
   },
 });
