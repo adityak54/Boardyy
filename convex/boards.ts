@@ -43,6 +43,9 @@ export const get = query({
         .collect();
     } else {
       // Fetch all boards for the organization
+        if(args.favorites) console.log("cannot find favorite boards");
+        else if(args.search) console.log("cannot search boards");
+        else console.log("team boards")
       boards = await ctx.db
         .query("boards")
         .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
